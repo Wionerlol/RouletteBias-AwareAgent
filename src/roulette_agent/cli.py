@@ -20,6 +20,22 @@ import sys
 import uuid
 from pathlib import Path
 
+
+def _load_dotenv() -> None:
+    """Load KEY=VALUE pairs from .env (project root or cwd) into os.environ."""
+    for candidate in (Path(__file__).parents[3] / ".env", Path.cwd() / ".env"):
+        if candidate.is_file():
+            for line in candidate.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                os.environ.setdefault(key.strip(), val.strip())
+            return
+
+
+_load_dotenv()
+
 import anthropic
 
 from roulette_agent.agent import RouletteAgent
