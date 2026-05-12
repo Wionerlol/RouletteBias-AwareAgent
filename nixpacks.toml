@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["python311"]
-
-[phases.install]
-cmds = ["pip install ."]
-
-[start]
-cmd = "bash scripts/start.sh"
