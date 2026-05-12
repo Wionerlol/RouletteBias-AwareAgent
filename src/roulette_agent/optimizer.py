@@ -188,15 +188,16 @@ def kelly_allocation(
     excluded_dozens: list[int],
     fraction: float = 0.25,
 ) -> list[dict]:
-    """Fractional Kelly sizing for all positive-Kelly legal bets.
+    """Fractional Kelly sizing drawn from a shared budget of fraction × bankroll.
 
     f* = (b*p_win - p_lose) / b  (full Kelly)
-    amount = fraction * f* * bankroll, rounded down to nearest bet_unit.
-    Capped at 0.5 × bankroll per bet. Bets with f* <= 0 are skipped.
+    Candidates are sorted by f* descending; each receives min(fraction*f*×bankroll, budget_left)
+    floored to bet_unit. Total staked is capped at fraction × bankroll.
+    Bets with f* <= 0 are skipped.
     """
     legal = enumerate_legal_bets(excluded_dozens)
-    result = []
 
+    candidates: list[tuple[float, dict]] = []
     for b in legal:
         payout = BET_TYPES[b["type"]].payout
         p_win = sum(p.get(n, 0.0) for n in b["covered"])
@@ -204,20 +205,28 @@ def kelly_allocation(
         if payout == 0 or p_win <= 0:
             continue
         f_star = (payout * p_win - p_lose) / payout
-        if f_star <= 0:
-            continue
+        if f_star > 0:
+            candidates.append((f_star, b))
 
-        raw_amount = fraction * f_star * bankroll
-        raw_amount = min(raw_amount, 0.5 * bankroll)
+    if not candidates:
+        return []
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+
+    budget = fraction * bankroll
+    result = []
+    for f_star, b in candidates:
+        if budget < bet_unit:
+            break
+        raw = min(fraction * f_star * bankroll, budget)
         if bet_unit > 0:
-            units = math.floor(raw_amount / bet_unit)
-            amount = units * bet_unit
+            amount = math.floor(raw / bet_unit) * bet_unit
         else:
-            amount = raw_amount
-
+            amount = raw
         if amount <= 0:
             continue
         result.append({"type": b["type"], "numbers": b["numbers"], "amount": amount})
+        budget -= amount
 
     return result
 
