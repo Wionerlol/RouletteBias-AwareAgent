@@ -87,8 +87,8 @@ class TestDispatchTool:
         with pytest.raises(ValueError, match="Unknown tool"):
             dispatch_tool("nonexistent", {})
 
-    def test_tools_list_has_six_entries(self):
-        assert len(TOOLS) == 6
+    def test_tools_list_has_eight_entries(self):
+        assert len(TOOLS) == 8
 
     def test_all_tools_have_required_schema_fields(self):
         for t in TOOLS:

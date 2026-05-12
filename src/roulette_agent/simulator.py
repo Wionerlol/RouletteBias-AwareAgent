@@ -6,6 +6,7 @@ import numpy as np
 
 from roulette_agent.belief import compute_belief
 from roulette_agent.bias_detector import detect_bias
+from roulette_agent.hotspot_grid import gaussian_kelly_allocation
 from roulette_agent.optimizer import (
     fixed_baseline_allocation,
     greedy_ev_allocation,
@@ -49,13 +50,15 @@ def _get_bets(
     excluded_dozens: list[int],
     weight: float = 0.0,
 ) -> list[dict]:
-    # When no bias is detected, greedy/kelly will find no positive-EV bet — skip allocation.
-    if weight == 0.0 and strategy_name in ("greedy_ev", "kelly"):
+    # When no bias is detected, greedy/kelly strategies find no positive-EV bet — skip.
+    if weight == 0.0 and strategy_name in ("greedy_ev", "kelly", "gaussian_kelly"):
         return []
     if strategy_name == "greedy_ev":
         return greedy_ev_allocation(p, bankroll, bet_unit, excluded_dozens)
     if strategy_name == "kelly":
         return kelly_allocation(p, bankroll, bet_unit, excluded_dozens)
+    if strategy_name == "gaussian_kelly":
+        return gaussian_kelly_allocation(p, bankroll, bet_unit, excluded_dozens)
     if strategy_name == "fixed_baseline":
         return fixed_baseline_allocation(p, bankroll, bet_unit, excluded_dozens)
     if strategy_name == "always_red":
@@ -85,7 +88,7 @@ def simulate(
 ) -> dict:
     """Run a single simulation and return trajectory data.
 
-    strategy_name : "greedy_ev" | "kelly" | "fixed_baseline" | "always_red" | "no_bet"
+    strategy_name : "greedy_ev" | "kelly" | "gaussian_kelly" | "fixed_baseline" | "always_red" | "no_bet"
     bias_inject   : e.g. {35: 3/38} — pocket 35 gets p=3/38; rest share remaining prob.
     _refresh_every: recompute bias/belief every N spins (private; 1 = every spin).
 

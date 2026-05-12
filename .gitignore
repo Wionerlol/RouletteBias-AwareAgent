@@ -54,3 +54,6 @@ htmlcov/
 
 # Zone identifier files (WSL artifact)
 *:Zone.Identifier
+
+# Claude Code local settings
+.claude/

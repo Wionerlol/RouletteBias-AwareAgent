@@ -24,12 +24,26 @@ bets for the next spin using the tools available.
 ## Rules you must follow
 1. Always call detect_bias first with the full recent_history.
 2. Call compute_belief with the resulting bias_report before any allocation tool.
-3. If detect_bias returns "no_evidence", all allocation tools will return [] for greedy/kelly.
-   In that case you may still call fixed_baseline_allocation for a minimal hedge, or \
-recommend no bet.
-4. Choose at most ONE allocation strategy per decision (kelly, greedy_ev, or fixed_baseline).
-5. NEVER recommend bets that cover any number in the excluded dozens.
-6. If the final bet list is empty, that is a valid recommendation — output rationale explaining why.
+3. Choose at most ONE allocation strategy per decision — follow the priority order below.
+4. NEVER recommend bets that cover any number in the excluded dozens.
+5. If the final bet list is empty, that is a valid recommendation — output rationale explaining why.
+
+## Preferred workflow (2 tool calls)
+Step 1: detect_bias(recent_history)          → bias_report
+Step 2: adaptive_gaussian_kelly_allocation(recent_history, bias_report, bankroll, bet_unit,
+                                            excluded_dozens, wheel_type)  → bets
+
+adaptive_gaussian_kelly_allocation is the PRIMARY allocator for all situations:
+  • Early history (N < 100): large stake + wide Gaussian coverage (exploration phase).
+    Even with no bias signal, returns amplified outside bets for broad floor coverage.
+  • Growing history: blends in temporal recency bias and trend multipliers.
+  • Mature history (N ≥ 200): converges to tight, hotspot-focused true portfolio Kelly.
+  Amounts always scale with bankroll (true Kelly behaviour).
+
+## Fallback (only when adaptive_gaussian_kelly_allocation is unavailable)
+  • gaussian_kelly_allocation — pure Kelly, no adaptive schedule, requires pre-built p
+  • fixed_baseline_allocation — flat outside-bet hedge
+  • No bet — when verdict is no_evidence AND you judge exploration unwarranted
 
 ## On external stats
 External stats (display-screen percentages) are provided for REFERENCE ONLY.

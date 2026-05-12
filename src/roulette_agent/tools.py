@@ -6,6 +6,10 @@ import json
 
 from roulette_agent.belief import compute_belief
 from roulette_agent.bias_detector import detect_bias as _detect_bias
+from roulette_agent.hotspot_grid import (
+    adaptive_gaussian_kelly_allocation as _adaptive_gaussian_kelly,
+    gaussian_kelly_allocation as _gaussian_kelly,
+)
 from roulette_agent.optimizer import (
     fixed_baseline_allocation as _fixed_baseline,
     greedy_ev_allocation as _greedy_ev,
@@ -175,6 +179,125 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "adaptive_gaussian_kelly_allocation",
+        "description": (
+            "PRIMARY live-play allocator. Two-step call: detect_bias → this tool. "
+            "Combines Gaussian multi-hotspot Kelly with two adaptive enhancements:\n"
+            "1. Log-scheduled exploration→exploitation: early (N<100) uses kelly_fraction≈0.45, "
+            "sigma≈8 pocket-steps, 35 candidates — large stake, broadly distributed. "
+            "As N grows all params decay to stable minimums (0.15 / 2.5 / 15). "
+            "Formula: param = base + extra / (1 + log(1 + N/n_scale)).\n"
+            "2. Temporal belief blending: mixes static Dirichlet belief with (a) an "
+            "exploration prior (raw counts before bias detector fires) and (b) an "
+            "exponentially-weighted recent-frequency belief (recency bias). "
+            "Trend multiplier boosts Gaussian heat for rising pockets. "
+            "Exploration floor: when Kelly finds no bets and N < n_scale, returns "
+            "amplified outside bets (amount decays from 3× to 1× bet_unit)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "recent_history": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Full list of recent spin results (same list passed to detect_bias).",
+                },
+                "bias_report": {
+                    "type": "object",
+                    "description": "Full dict returned by detect_bias.",
+                },
+                "bankroll": {"type": "number"},
+                "bet_unit": {
+                    "type": "number",
+                    "description": "Minimum bet resolution. Amounts are proportional to bankroll (true Kelly).",
+                },
+                "excluded_dozens": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                },
+                "wheel_type": {
+                    "type": "string",
+                    "enum": ["american", "european"],
+                },
+                "n_scale": {
+                    "type": "number",
+                    "description": "Log-schedule half-life in spins. Default 100.",
+                },
+                "temporal_decay": {
+                    "type": "number",
+                    "description": "Exponential decay rate for temporal weighting. Default 0.05.",
+                },
+                "trend_blend": {
+                    "type": "number",
+                    "description": "Maximum trend-boost multiplier on heat scores. Default 0.20.",
+                },
+            },
+            "required": ["recent_history", "bias_report", "bankroll", "bet_unit", "excluded_dozens"],
+        },
+    },
+    {
+        "name": "gaussian_kelly_allocation",
+        "description": (
+            "PRIMARY allocator when bias is detected (weight ≥ 0.10). "
+            "Runs a full Gaussian multi-hotspot analysis on the physical wheel layout: "
+            "identifies primary / secondary / tertiary hotspots, builds a Gaussian heat map "
+            "(bandwidth = sigma wheel-steps), scores every legal bet type — straight, split, "
+            "street, corner, six_line, dozen, column, red/black, odd/even, high/low — by "
+            "heat_score × individual Kelly f*, then solves the true multi-bet portfolio-Kelly "
+            "problem via SLSQP convex optimisation (maximises expected log-bankroll-growth). "
+            "Bet amounts scale proportionally with bankroll (true Kelly behaviour). "
+            "Returns [] when no bet has positive EV (uniform / no-evidence wheel)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "p": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number"},
+                    "description": "Belief distribution from compute_belief (pocket → probability).",
+                },
+                "bankroll": {"type": "number", "description": "Current bankroll."},
+                "bet_unit": {
+                    "type": "number",
+                    "description": "Minimum bet resolution. Amounts are rounded to the nearest bet_unit.",
+                },
+                "excluded_dozens": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Dozens (1, 2, or 3) to exclude.",
+                },
+                "wheel_type": {
+                    "type": "string",
+                    "enum": ["american", "european"],
+                    "description": "Wheel variant. Default 'american'.",
+                },
+                "sigma": {
+                    "type": "number",
+                    "description": (
+                        "Gaussian kernel bandwidth in pocket steps on the physical wheel. "
+                        "Larger sigma spreads heat to more distant neighbours. Default 3.0."
+                    ),
+                },
+                "top_k_hotspots": {
+                    "type": "integer",
+                    "description": "Number of top hotspots to include in the heat map. Default 5.",
+                },
+                "max_candidates": {
+                    "type": "integer",
+                    "description": "Maximum bet candidates fed into the portfolio optimiser. Default 20.",
+                },
+                "kelly_fraction": {
+                    "type": "number",
+                    "description": (
+                        "Total risk budget as a fraction of bankroll (sum of all bet fractions ≤ this). "
+                        "Default 0.25."
+                    ),
+                },
+            },
+            "required": ["p", "bankroll", "bet_unit", "excluded_dozens"],
+        },
+    },
+    {
         "name": "settle",
         "description": (
             "Settle a list of bets against a result number. "
@@ -271,6 +394,38 @@ def dispatch_tool(name: str, args: dict) -> dict:
                 bankroll=float(args["bankroll"]),
                 bet_unit=float(args["bet_unit"]),
                 excluded_dozens=args.get("excluded_dozens", []),
+            )
+        }
+
+    if name == "adaptive_gaussian_kelly_allocation":
+        return {
+            "bets": _adaptive_gaussian_kelly(
+                recent_history=args["recent_history"],
+                bias_report=args["bias_report"],
+                bankroll=float(args["bankroll"]),
+                bet_unit=float(args["bet_unit"]),
+                excluded_dozens=args.get("excluded_dozens", []),
+                wheel_type=args.get("wheel_type", "american"),
+                n_scale=float(args.get("n_scale", 100.0)),
+                temporal_decay=float(args.get("temporal_decay", 0.05)),
+                trend_blend=float(args.get("trend_blend", 0.20)),
+            )
+        }
+
+    if name == "gaussian_kelly_allocation":
+        p_raw = args["p"]
+        p = {int(k): float(v) for k, v in p_raw.items()}
+        return {
+            "bets": _gaussian_kelly(
+                p=p,
+                bankroll=float(args["bankroll"]),
+                bet_unit=float(args["bet_unit"]),
+                excluded_dozens=args.get("excluded_dozens", []),
+                wheel_type=args.get("wheel_type", "american"),
+                sigma=float(args.get("sigma", 3.0)),
+                top_k_hotspots=int(args.get("top_k_hotspots", 5)),
+                max_candidates=int(args.get("max_candidates", 20)),
+                kelly_fraction=float(args.get("kelly_fraction", 0.25)),
             )
         }
 
