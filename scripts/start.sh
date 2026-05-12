@@ -1,13 +1,10 @@
 #!/bin/bash
 # Production start script for Railway.
-# Waits for Postgres to accept connections before running Alembic migrations,
-# then starts uvicorn. Railway starts app containers before the DB is fully
-# ready, so without this wait the alembic connection times out on cold starts.
+# pip install . puts alembic/uvicorn directly on PATH — no uv run needed.
 set -e
 
 # ── 1. Wait for Postgres ─────────────────────────────────────────────────────
-# Skip for SQLite (local dev). For Postgres, poll up to 60 s (30 × 2 s).
-uv run python3 - <<'PYEOF'
+python3 - <<'PYEOF'
 import os, sys, time
 from sqlalchemy import create_engine, text
 
@@ -38,10 +35,10 @@ PYEOF
 
 # ── 2. Run Alembic migrations ─────────────────────────────────────────────────
 echo "==> Running Alembic migrations..."
-uv run alembic upgrade head
+alembic upgrade head
 
 # ── 3. Start uvicorn ──────────────────────────────────────────────────────────
 echo "==> Starting uvicorn on port ${PORT:-8000}..."
-exec uv run uvicorn roulette_agent.app:app \
+exec uvicorn roulette_agent.app:app \
     --host 0.0.0.0 \
     --port "${PORT:-8000}"
