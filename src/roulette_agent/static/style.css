@@ -186,6 +186,12 @@ details.card > summary::-webkit-details-marker { display: none; }
 }
 .btn-zero:active { background: var(--border); }
 
+/* ---- Custom payouts grid ---- */
+.payouts-grid { display: flex; flex-direction: column; gap: 8px; }
+.payout-row { display: flex; align-items: center; gap: 10px; }
+.payout-label { flex: 1; font-size: 14px; color: var(--text); }
+.payout-row input { width: 80px; flex: none; text-align: center; padding: 8px; }
+
 /* ---- History table ---- */
 .history-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
 .history-table th {

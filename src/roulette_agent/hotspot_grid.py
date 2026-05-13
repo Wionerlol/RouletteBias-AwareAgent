@@ -36,7 +36,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from roulette_agent.belief import compute_belief
-from roulette_agent.layout import BET_TYPES, WHEEL_ORDER_AMERICAN, WHEEL_ORDER_EUROPEAN
+from roulette_agent.layout import BET_TYPES, WHEEL_ORDER_AMERICAN, WHEEL_ORDER_EUROPEAN, effective_payouts
 from roulette_agent.optimizer import enumerate_legal_bets, fixed_baseline_allocation
 
 
@@ -65,7 +65,9 @@ def detect_hotspots(p: dict[int, float], top_k: int = 5) -> list[Hotspot]:
 # Gaussian heat map in wheel space
 # ---------------------------------------------------------------------------
 
-def _get_wheel(wheel_type: str) -> list[int]:
+def _get_wheel(wheel_type: str, wheel_order: list[int] | None = None) -> list[int]:
+    if wheel_order:
+        return wheel_order
     return WHEEL_ORDER_AMERICAN if wheel_type == "american" else WHEEL_ORDER_EUROPEAN
 
 
@@ -79,6 +81,7 @@ def build_heat_map(
     wheel_type: str = "american",
     sigma: float = 3.0,
     top_k: int = 5,
+    wheel_order: list[int] | None = None,
 ) -> dict[int, float]:
     """
     Gaussian-smoothed probability heat map in physical wheel space.
@@ -87,7 +90,7 @@ def build_heat_map(
     Multiple hotspot halos add, producing elevated saddle regions between
     co-located hot zones and attenuated heat between opposing ones.
     """
-    wheel = _get_wheel(wheel_type)
+    wheel = _get_wheel(wheel_type, wheel_order)
     pos_idx: dict[int, int] = {n: i for i, n in enumerate(wheel)}
     n_slots = len(wheel)
     hotspots = detect_hotspots(p, top_k=top_k)
@@ -109,12 +112,14 @@ def build_heat_map(
 def _build_payout_matrix(
     candidates: list[dict],
     outcomes: list[int],
+    custom_payouts: dict[str, int] | None = None,
 ) -> np.ndarray:
     """Shape (n_bets, n_outcomes). Net return per unit stake for each outcome."""
+    payouts = effective_payouts(custom_payouts)
     outcome_idx = {o: i for i, o in enumerate(outcomes)}
     mat = np.full((len(candidates), len(outcomes)), -1.0)
     for b, bet in enumerate(candidates):
-        payout = float(BET_TYPES[bet["type"]].payout)
+        payout = float(payouts[bet["type"]])
         for n in bet["covered"]:
             if n in outcome_idx:
                 mat[b, outcome_idx[n]] = payout
@@ -181,12 +186,14 @@ def _run_gaussian_kelly(
     legal: list[dict],
     max_candidates: int,
     kelly_fraction: float,
+    custom_payouts: dict[str, int] | None = None,
 ) -> list[dict]:
     """Score legal bets, select top candidates, solve portfolio Kelly, round amounts."""
+    payouts = effective_payouts(custom_payouts)
     scored: list[tuple[float, dict]] = []
     for bet in legal:
         covered = bet["covered"]
-        payout = BET_TYPES[bet["type"]].payout
+        payout = payouts[bet["type"]]
         p_win = sum(p.get(n, 0.0) for n in covered)
         ev = payout * p_win - (1.0 - p_win)
         if ev <= 0:
@@ -205,7 +212,7 @@ def _run_gaussian_kelly(
 
     outcomes = sorted(p.keys())
     p_vec = np.array([p[n] for n in outcomes])
-    payout_matrix = _build_payout_matrix(candidates, outcomes)
+    payout_matrix = _build_payout_matrix(candidates, outcomes, custom_payouts)
     fractions = _portfolio_kelly_fractions(p_vec, payout_matrix, kelly_fraction)
 
     result: list[dict] = []
@@ -232,6 +239,8 @@ def gaussian_kelly_allocation(
     top_k_hotspots: int = 5,
     max_candidates: int = 20,
     kelly_fraction: float = 0.25,
+    wheel_order: list[int] | None = None,
+    custom_payouts: dict[str, int] | None = None,
 ) -> list[dict]:
     """
     Gaussian multi-hotspot grid analysis + true portfolio-Kelly allocation.
@@ -247,9 +256,9 @@ def gaussian_kelly_allocation(
     """
     if bankroll < bet_unit:
         return []
-    heat = build_heat_map(p, wheel_type=wheel_type, sigma=sigma, top_k=top_k_hotspots)
+    heat = build_heat_map(p, wheel_type=wheel_type, sigma=sigma, top_k=top_k_hotspots, wheel_order=wheel_order)
     legal = enumerate_legal_bets(excluded_dozens)
-    return _run_gaussian_kelly(p, heat, bankroll, bet_unit, legal, max_candidates, kelly_fraction)
+    return _run_gaussian_kelly(p, heat, bankroll, bet_unit, legal, max_candidates, kelly_fraction, custom_payouts)
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +376,8 @@ def adaptive_gaussian_kelly_allocation(
     temporal_decay: float = 0.05,
     temporal_k_smooth: float = 3.0,
     trend_blend: float = 0.20,
+    wheel_order: list[int] | None = None,
+    custom_payouts: dict[str, int] | None = None,
 ) -> list[dict]:
     """
     Adaptive exploration→exploitation Gaussian Kelly with temporal analysis.
@@ -428,7 +439,7 @@ def adaptive_gaussian_kelly_allocation(
     p_eff = _blend_beliefs(p_static, p_temporal, p_explore, w_temporal, w_explore)
 
     # ── 3. Trend-boosted heat map ─────────────────────────────────────────────
-    heat = build_heat_map(p_eff, wheel_type=wheel_type, sigma=sigma)
+    heat = build_heat_map(p_eff, wheel_type=wheel_type, sigma=sigma, wheel_order=wheel_order)
     trend = _trend_scores(recent_history, size)
     t_strength = trend_blend * decay  # trend boost decays with N
     heat_boosted = {
@@ -440,7 +451,7 @@ def adaptive_gaussian_kelly_allocation(
     legal = enumerate_legal_bets(excluded_dozens)
     bets = _run_gaussian_kelly(
         p_eff, heat_boosted, bankroll, bet_unit,
-        legal, max_candidates, kelly_fraction,
+        legal, max_candidates, kelly_fraction, custom_payouts,
     )
 
     # ── 5. Exploration floor ──────────────────────────────────────────────────

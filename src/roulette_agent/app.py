@@ -9,12 +9,13 @@ import anthropic
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session as DbSession, sessionmaker
 
 from roulette_agent.agent import RouletteAgent
 from roulette_agent.bias_detector import detect_bias
+from roulette_agent.layout import BET_TYPES
 from roulette_agent.models import Base, Session as SessionModel, Spin as SpinModel
 from roulette_agent.settler import settle
 
@@ -77,6 +78,8 @@ class NewSessionRequest(BaseModel):
     external_stats: Optional[dict[str, float]] = None
     external_stats_n_estimate: Optional[int] = None
     strategy_pref: str = "auto"
+    wheel_order: Optional[list[int]] = None
+    custom_payouts: Optional[dict[str, int]] = None
 
     @field_validator("recent_history")
     @classmethod
@@ -101,6 +104,32 @@ class NewSessionRequest(BaseModel):
         for d in v:
             if d not in (1, 2, 3):
                 raise ValueError(f"excluded_dozens elements must be 1, 2, or 3; got {d}")
+        return v
+
+    @field_validator("wheel_order")
+    @classmethod
+    def valid_wheel_order(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is None:
+            return v
+        if len(v) < 37:
+            raise ValueError("wheel_order must have at least 37 numbers")
+        for n in v:
+            if not 0 <= n <= 37:
+                raise ValueError(f"wheel_order number {n} out of range 0..37")
+        if len(set(v)) != len(v):
+            raise ValueError("wheel_order contains duplicate numbers")
+        return v
+
+    @field_validator("custom_payouts")
+    @classmethod
+    def valid_custom_payouts(cls, v: Optional[dict[str, int]]) -> Optional[dict[str, int]]:
+        if v is None:
+            return v
+        for bet_type, payout in v.items():
+            if bet_type not in BET_TYPES:
+                raise ValueError(f"Unknown bet type in custom_payouts: {bet_type!r}")
+            if not isinstance(payout, int) or payout < 0:
+                raise ValueError(f"custom_payouts[{bet_type!r}] must be a non-negative integer")
         return v
 
 
@@ -168,6 +197,12 @@ def new_session(
     _auth: None = Depends(verify_api_key),
     db: DbSession = Depends(get_db),
 ) -> dict:
+    hp: dict[str, Any] = {}
+    if body.wheel_order:
+        hp["_custom_wheel_order"] = body.wheel_order
+    if body.custom_payouts:
+        hp["_custom_payouts"] = body.custom_payouts
+
     sess = SessionModel(
         wheel_type=body.wheel_type,
         bankroll_init=body.bankroll,
@@ -177,7 +212,7 @@ def new_session(
         initial_history=body.recent_history,
         external_stats=body.external_stats,
         external_stats_n_estimate=body.external_stats_n_estimate,
-        hyperparams={},
+        hyperparams=hp,
         notes="",
     )
     db.add(sess)
@@ -188,14 +223,20 @@ def new_session(
         wheel_type=body.wheel_type,
         external_stats=body.external_stats,
         external_n_estimate=body.external_stats_n_estimate,
+        wheel_order=body.wheel_order,
     )
 
     session_state = _build_session_state(sess, list(body.recent_history))
-    agent = RouletteAgent(_anthropic_client(), model="claude-sonnet-4-6")
+    context = {
+        "custom_payouts": body.custom_payouts,
+        "custom_wheel_order": body.wheel_order,
+    }
+    agent = RouletteAgent(_anthropic_client(), model="claude-sonnet-4-6", context=context)
     decision = agent.decide(session_state)
 
     # Persist the initial bets so spin #1 can settle them.
-    sess.hyperparams = {"_initial_bets": decision["bets"]}
+    # Must assign a new dict object so SQLAlchemy detects the JSON change.
+    sess.hyperparams = {**hp, "_initial_bets": decision["bets"]}
 
     db.commit()
     db.refresh(sess)
@@ -238,15 +279,19 @@ def spin(
         s.result_number for s in existing_spins
     ]
 
+    hp = sess.hyperparams or {}
+    custom_payouts = hp.get("_custom_payouts")
+    custom_wheel_order = hp.get("_custom_wheel_order")
+
     # Settle the previous spin's bets against this result.
     # On spin #1, no spin rows exist yet — use the initial bets saved at session creation.
     pnl_last: float = 0.0
     if existing_spins:
         last_bets = existing_spins[-1].bets or []
     else:
-        last_bets = (sess.hyperparams or {}).get("_initial_bets") or []
+        last_bets = hp.get("_initial_bets") or []
     if last_bets:
-        outcome = settle(last_bets, body.result_number)
+        outcome = settle(last_bets, body.result_number, custom_payouts=custom_payouts)
         pnl_last = float(outcome["pnl"])
     sess.bankroll_now = float(sess.bankroll_now) + pnl_last
 
@@ -259,11 +304,16 @@ def spin(
         wheel_type=str(sess.wheel_type),
         external_stats=sess.external_stats,
         external_n_estimate=sess.external_stats_n_estimate,
+        wheel_order=custom_wheel_order,
     )
 
     # Call agent for next-spin strategy
     session_state = _build_session_state(sess, recent_history)
-    agent = RouletteAgent(_anthropic_client(), model="claude-sonnet-4-6")
+    context = {
+        "custom_payouts": custom_payouts,
+        "custom_wheel_order": custom_wheel_order,
+    }
+    agent = RouletteAgent(_anthropic_client(), model="claude-sonnet-4-6", context=context)
     decision = agent.decide(session_state)
 
     bets = decision["bets"]

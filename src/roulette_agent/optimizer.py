@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from roulette_agent.layout import BET_TYPES, get_covered_numbers, is_valid_bet
+from roulette_agent.layout import BET_TYPES, effective_payouts, get_covered_numbers, is_valid_bet
 
 _DOZEN_RANGES: dict[int, set[int]] = {
     1: set(range(1, 13)),
@@ -146,9 +146,9 @@ def _enumerate_structured(bet_name: str, excl: set[int], out: list[dict]) -> Non
                     out.append({"type": "column", "numbers": [c], "covered": covered})
 
 
-def _expected_value_from_p(bet: dict, p: dict[int, float]) -> float:
+def _expected_value_from_p(bet: dict, p: dict[int, float], custom_payouts: dict[str, int] | None = None) -> float:
     """EV = payout * p_win - (1 - p_win), where p_win = sum of p over covered numbers."""
-    payout = BET_TYPES[bet["type"]].payout
+    payout = effective_payouts(custom_payouts)[bet["type"]]
     p_win = sum(p.get(n, 0.0) for n in bet["covered"])
     return payout * p_win - (1.0 - p_win)
 
@@ -160,13 +160,14 @@ def greedy_ev_allocation(
     excluded_dozens: list[int],
     max_bet_fraction: float = 0.1,
     top_k: int = 5,
+    custom_payouts: dict[str, int] | None = None,
 ) -> list[dict]:
     """Select up to top_k positive-EV bets, each sized at bet_unit, capped at bankroll × max_bet_fraction.
 
     Returns list of {"type", "numbers", "amount"}.  Empty when no positive-EV bet exists.
     """
     legal = enumerate_legal_bets(excluded_dozens)
-    ev_bets = [(b, _expected_value_from_p(b, p)) for b in legal]
+    ev_bets = [(b, _expected_value_from_p(b, p, custom_payouts)) for b in legal]
     ev_bets = [(b, ev) for b, ev in ev_bets if ev > 0]
     ev_bets.sort(key=lambda x: x[1], reverse=True)
 
@@ -187,6 +188,7 @@ def kelly_allocation(
     bet_unit: float,
     excluded_dozens: list[int],
     fraction: float = 0.25,
+    custom_payouts: dict[str, int] | None = None,
 ) -> list[dict]:
     """Fractional Kelly sizing drawn from a shared budget of fraction × bankroll.
 
@@ -196,10 +198,11 @@ def kelly_allocation(
     Bets with f* <= 0 are skipped.
     """
     legal = enumerate_legal_bets(excluded_dozens)
+    payouts = effective_payouts(custom_payouts)
 
     candidates: list[tuple[float, dict]] = []
     for b in legal:
-        payout = BET_TYPES[b["type"]].payout
+        payout = payouts[b["type"]]
         p_win = sum(p.get(n, 0.0) for n in b["covered"])
         p_lose = 1.0 - p_win
         if payout == 0 or p_win <= 0:
@@ -236,6 +239,7 @@ def fixed_baseline_allocation(
     bankroll: float,
     bet_unit: float,
     excluded_dozens: list[int],
+    custom_payouts: dict[str, int] | None = None,
 ) -> list[dict]:
     """Flat bet_unit on each of the six outside bets that are legal and positive-EV.
 
@@ -250,7 +254,7 @@ def fixed_baseline_allocation(
                      if b["type"] in outside_types}
 
     positive = [(t, b) for t, b in legal_outside.items()
-                if _expected_value_from_p(b, p) > 0]
+                if _expected_value_from_p(b, p, custom_payouts) > 0]
 
     if positive:
         return [{"type": t, "numbers": None, "amount": bet_unit} for t, _ in positive]
@@ -259,5 +263,5 @@ def fixed_baseline_allocation(
     if not legal_outside:
         return []
     best_type, best_b = max(legal_outside.items(),
-                            key=lambda kv: _expected_value_from_p(kv[1], p))
+                            key=lambda kv: _expected_value_from_p(kv[1], p, custom_payouts))
     return [{"type": best_type, "numbers": None, "amount": bet_unit}]

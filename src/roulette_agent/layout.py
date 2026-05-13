@@ -322,6 +322,14 @@ def get_covered_numbers(bet_type: str, numbers: list[int] | None) -> set[int]:
     return BET_TYPES[bet_type].covered_fn(numbers)
 
 
+def effective_payouts(custom_payouts: dict[str, int] | None = None) -> dict[str, int]:
+    """Return standard net payouts merged with any session-level overrides."""
+    base = {k: bt.payout for k, bt in BET_TYPES.items()}
+    if custom_payouts:
+        base.update({k: int(v) for k, v in custom_payouts.items() if k in base})
+    return base
+
+
 def expected_value(
     bet_type: str,
     numbers: list[int] | None,

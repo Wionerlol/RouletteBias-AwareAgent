@@ -338,14 +338,24 @@ TOOLS: list[dict] = [
 # Dispatch router
 # ---------------------------------------------------------------------------
 
-def dispatch_tool(name: str, args: dict) -> dict:
-    """Route a tool call from Claude to the corresponding Python function."""
+def dispatch_tool(name: str, args: dict, context: dict | None = None) -> dict:
+    """Route a tool call from Claude to the corresponding Python function.
+
+    context carries session-level config injected by the server (not by the agent):
+      custom_payouts   – dict[bet_type → int net payout] or None
+      custom_wheel_order – list[int] physical wheel order or None
+    """
+    ctx = context or {}
+    custom_payouts: dict | None = ctx.get("custom_payouts")
+    wheel_order: list | None = ctx.get("custom_wheel_order")
+
     if name == "detect_bias":
         return _detect_bias(
             recent_history=args["recent_history"],
             wheel_type=args.get("wheel_type", "american"),
             external_stats=args.get("external_stats"),
             external_n_estimate=args.get("external_n_estimate"),
+            wheel_order=wheel_order,
         )
 
     if name == "compute_belief":
@@ -368,6 +378,7 @@ def dispatch_tool(name: str, args: dict) -> dict:
                 bet_unit=float(args["bet_unit"]),
                 excluded_dozens=args.get("excluded_dozens", []),
                 fraction=float(args.get("fraction", 0.25)),
+                custom_payouts=custom_payouts,
             )
         }
 
@@ -382,6 +393,7 @@ def dispatch_tool(name: str, args: dict) -> dict:
                 excluded_dozens=args.get("excluded_dozens", []),
                 max_bet_fraction=float(args.get("max_bet_fraction", 0.1)),
                 top_k=int(args.get("top_k", 5)),
+                custom_payouts=custom_payouts,
             )
         }
 
@@ -394,6 +406,7 @@ def dispatch_tool(name: str, args: dict) -> dict:
                 bankroll=float(args["bankroll"]),
                 bet_unit=float(args["bet_unit"]),
                 excluded_dozens=args.get("excluded_dozens", []),
+                custom_payouts=custom_payouts,
             )
         }
 
@@ -409,6 +422,8 @@ def dispatch_tool(name: str, args: dict) -> dict:
                 n_scale=float(args.get("n_scale", 100.0)),
                 temporal_decay=float(args.get("temporal_decay", 0.05)),
                 trend_blend=float(args.get("trend_blend", 0.20)),
+                wheel_order=wheel_order,
+                custom_payouts=custom_payouts,
             )
         }
 
@@ -426,6 +441,8 @@ def dispatch_tool(name: str, args: dict) -> dict:
                 top_k_hotspots=int(args.get("top_k_hotspots", 5)),
                 max_candidates=int(args.get("max_candidates", 20)),
                 kelly_fraction=float(args.get("kelly_fraction", 0.25)),
+                wheel_order=wheel_order,
+                custom_payouts=custom_payouts,
             )
         }
 
@@ -433,6 +450,7 @@ def dispatch_tool(name: str, args: dict) -> dict:
         return _settle(
             bets=args["bets"],
             result_number=int(args["result_number"]),
+            custom_payouts=custom_payouts,
         )
 
     raise ValueError(f"Unknown tool: {name!r}")

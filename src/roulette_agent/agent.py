@@ -20,6 +20,7 @@ bets for the next spin using the tools available.
 - Bet unit    : {bet_unit}
 - Excluded dozens: {excluded_dozens}
 - Recent history length: {n_history} spins
+{custom_config_note}
 
 ## Rules you must follow
 1. Always call detect_bias first with the full recent_history.
@@ -69,9 +70,11 @@ _MAX_TOOL_ROUNDS = 10
 
 
 class RouletteAgent:
-    def __init__(self, anthropic_client, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(self, anthropic_client, model: str = "claude-sonnet-4-5-20250929",
+                 context: dict | None = None):
         self._client = anthropic_client
         self._model = model
+        self._context = context or {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -85,6 +88,15 @@ class RouletteAgent:
           recent_history, external_stats, external_stats_n_estimate,
           hyperparams, notes
         """
+        custom_payouts = self._context.get("custom_payouts")
+        custom_wheel_order = self._context.get("custom_wheel_order")
+        config_lines = []
+        if custom_payouts:
+            config_lines.append(f"- Custom payouts active: {custom_payouts} (tools use these automatically)")
+        if custom_wheel_order:
+            config_lines.append(f"- Custom wheel order loaded ({len(custom_wheel_order)} pockets); sector analysis uses your specific wheel layout")
+        custom_config_note = "\n".join(config_lines)
+
         system = _SYSTEM_TEMPLATE.format(
             wheel_type=session_state.get("wheel_type", "american"),
             bankroll=session_state.get("bankroll", 0),
@@ -92,6 +104,7 @@ class RouletteAgent:
             excluded_dozens=session_state.get("excluded_dozens", []),
             n_history=len(session_state.get("recent_history", [])),
             notes=session_state.get("notes", "No accumulated notes yet."),
+            custom_config_note=custom_config_note,
         )
 
         # Inject external_stats summary into user message if present
@@ -136,7 +149,7 @@ class RouletteAgent:
                 if block.type != "tool_use":
                     continue
                 try:
-                    result = dispatch_tool(block.name, block.input)
+                    result = dispatch_tool(block.name, block.input, context=self._context)
                     result_content = json.dumps(result, default=str)
                     is_error = False
                 except Exception as exc:

@@ -92,10 +92,11 @@ def chi_square_sector(
     recent_history: list[int],
     wheel_type: str = "american",
     n_sectors: int = 8,
+    wheel_order: list[int] | None = None,
 ) -> dict:
     """χ² goodness-of-fit over wheel sectors (physical order)."""
     N = len(recent_history)
-    wheel = _wheel_order(wheel_type)
+    wheel = wheel_order if wheel_order else _wheel_order(wheel_type)
     size = len(wheel)
     usable = N >= 50
     reason = "ok" if usable else f"N={N} < 50"
@@ -349,6 +350,7 @@ def detect_bias(
     wheel_type: str = "american",
     external_stats: dict | None = None,
     external_n_estimate: int | None = None,
+    wheel_order: list[int] | None = None,
 ) -> dict:
     """Run all statistical tests and return a complete bias report.
 
@@ -359,7 +361,7 @@ def detect_bias(
 
     tests: dict = {
         "chi2_single":   chi_square_single(recent_history, wheel_type),
-        "chi2_sector_8": chi_square_sector(recent_history, wheel_type, n_sectors=8),
+        "chi2_sector_8": chi_square_sector(recent_history, wheel_type, n_sectors=8, wheel_order=wheel_order),
         "binomial_red":  binomial_test(recent_history, "red",  wheel_type),
         "binomial_odd":  binomial_test(recent_history, "odd",  wheel_type),
         "binomial_low":  binomial_test(recent_history, "low",  wheel_type),

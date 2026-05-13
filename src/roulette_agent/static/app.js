@@ -44,16 +44,22 @@ function resetToNew() {
   showView('new');
 }
 
-// ---- Parse textarea of spin numbers ----
-function parseHistory(raw) {
+// ---- Parse a comma-separated list of roulette numbers (shared by history + wheel order) ----
+function parseNumberList(raw, label) {
   const tokens = raw.trim().split(/[\s,]+/).filter(Boolean);
-  if (!tokens.length) throw new Error('请输入至少一个开奖数字');
+  if (!tokens.length) return null;
   return tokens.map(t => {
     if (t === '00') return 37;
     const n = parseInt(t, 10);
-    if (isNaN(n) || n < 0 || n > 36) throw new Error(`无效数字 "${t}"（范围 0-36 或 "00"）`);
+    if (isNaN(n) || n < 0 || n > 36) throw new Error(`${label}: 无效数字 "${t}"（范围 0-36 或 "00"）`);
     return n;
   });
+}
+
+function parseHistory(raw) {
+  const result = parseNumberList(raw, 'Recent draws');
+  if (!result || !result.length) throw new Error('请输入至少一个开奖数字');
+  return result;
 }
 
 // ---- New Session ----
@@ -83,6 +89,53 @@ async function submitNewSession() {
   });
   const extNRaw = document.getElementById('ext-n').value.trim();
 
+  // Custom wheel order (optional)
+  let wheelOrder = null;
+  const wheelOrderRaw = document.getElementById('wheel-order').value.trim();
+  if (wheelOrderRaw) {
+    try {
+      wheelOrder = parseNumberList(wheelOrderRaw, 'Wheel order');
+    } catch (e) {
+      return showError(errEl, e.message);
+    }
+    if (!wheelOrder || wheelOrder.length < 37) {
+      return showError(errEl, 'Wheel order 至少需要 37 个数字（欧式）或 38 个（美式）');
+    }
+    const uniq = new Set(wheelOrder);
+    if (uniq.size !== wheelOrder.length) {
+      return showError(errEl, 'Wheel order 中有重复数字');
+    }
+  }
+
+  // Custom payouts (optional — only include bet types the user filled in)
+  const PAYOUT_IDS = [
+    ['pay-straight', 'straight'],
+    ['pay-split',    'split'],
+    ['pay-street',   'street'],
+    ['pay-corner',   'corner'],
+    ['pay-six_line', 'six_line'],
+    ['pay-dozen',    'dozen'],
+    ['pay-red',      'red'],
+  ];
+  // Outside bets share the same payout; if user sets red, mirror to all outside bets
+  const OUTSIDE_BETS = ['red', 'black', 'odd', 'even', 'low', 'high'];
+  const customPayouts = {};
+  for (const [id, key] of PAYOUT_IDS) {
+    const v = document.getElementById(id).value.trim();
+    if (v !== '') {
+      const payout = parseInt(v, 10);
+      if (isNaN(payout) || payout < 1) return showError(errEl, `Custom payout for ${key} 必须是正整数`);
+      if (OUTSIDE_BETS.includes(key)) {
+        // Mirror to all outside bets
+        OUTSIDE_BETS.forEach(t => { customPayouts[t] = payout; });
+      } else {
+        customPayouts[key] = payout;
+        // Dozen and column share the same payout input
+        if (key === 'dozen') customPayouts['column'] = payout;
+      }
+    }
+  }
+
   const body = {
     wheel_type:      document.getElementById('wheel-type').value,
     bankroll:        parseFloat(document.getElementById('bankroll').value),
@@ -91,6 +144,8 @@ async function submitNewSession() {
     recent_history:  recentHistory,
     ...(Object.keys(extStats).length ? { external_stats: extStats } : {}),
     ...(extNRaw ? { external_stats_n_estimate: parseInt(extNRaw, 10) } : {}),
+    ...(wheelOrder ? { wheel_order: wheelOrder } : {}),
+    ...(Object.keys(customPayouts).length ? { custom_payouts: customPayouts } : {}),
   };
 
   setBtn(btn, true, 'Analyzing…');

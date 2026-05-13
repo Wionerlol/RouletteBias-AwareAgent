@@ -1,9 +1,9 @@
 """Spin settlement: given a list of bets and the winning number, compute pnl and per-bet detail."""
 
-from roulette_agent.layout import BET_TYPES, get_covered_numbers
+from roulette_agent.layout import BET_TYPES, effective_payouts, get_covered_numbers
 
 
-def settle(bets: list[dict], result_number: int) -> dict:
+def settle(bets: list[dict], result_number: int, custom_payouts: dict[str, int] | None = None) -> dict:
     """
     bets: [{"type": str, "numbers": list[int] | None, "amount": float}, ...]
     result_number: 0..37  (37 == 00)
@@ -22,6 +22,7 @@ def settle(bets: list[dict], result_number: int) -> dict:
     Win: payout = amount * (net_payout + 1)
     Loss: payout = 0  (stake is forfeit)
     """
+    payouts = effective_payouts(custom_payouts)
     total_staked = 0.0
     total_payout = 0.0
     detail: list[dict] = []
@@ -34,7 +35,7 @@ def settle(bets: list[dict], result_number: int) -> dict:
 
         covered = get_covered_numbers(bet_type, numbers)
         won = result_number in covered
-        payout = amount * (BET_TYPES[bet_type].payout + 1) if won else 0.0
+        payout = amount * (payouts[bet_type] + 1) if won else 0.0
         total_payout += payout
 
         detail.append({"bet": bet, "won": won, "payout": payout})
