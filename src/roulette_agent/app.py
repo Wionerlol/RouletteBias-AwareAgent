@@ -153,7 +153,7 @@ def _build_session_state(
         "recent_history": recent_history,
         "external_stats": sess.external_stats,
         "external_stats_n_estimate": sess.external_stats_n_estimate,
-        "hyperparams": dict(sess.hyperparams or {}),
+        "hyperparams": {k: v for k, v in (sess.hyperparams or {}).items() if not k.startswith("_")},
         "notes": sess.notes or "",
     }
 
@@ -193,6 +193,9 @@ def new_session(
     session_state = _build_session_state(sess, list(body.recent_history))
     agent = RouletteAgent(_anthropic_client(), model="claude-sonnet-4-6")
     decision = agent.decide(session_state)
+
+    # Persist the initial bets so spin #1 can settle them.
+    sess.hyperparams = {"_initial_bets": decision["bets"]}
 
     db.commit()
     db.refresh(sess)
@@ -235,15 +238,17 @@ def spin(
         s.result_number for s in existing_spins
     ]
 
-    # Settle the previous spin's bets against this result (if any spins exist)
+    # Settle the previous spin's bets against this result.
+    # On spin #1, no spin rows exist yet — use the initial bets saved at session creation.
     pnl_last: float = 0.0
     if existing_spins:
-        last_spin = existing_spins[-1]
-        last_bets = last_spin.bets or []
-        if last_bets:
-            outcome = settle(last_bets, body.result_number)
-            pnl_last = float(outcome["pnl"])
-        sess.bankroll_now = float(sess.bankroll_now) + pnl_last
+        last_bets = existing_spins[-1].bets or []
+    else:
+        last_bets = (sess.hyperparams or {}).get("_initial_bets") or []
+    if last_bets:
+        outcome = settle(last_bets, body.result_number)
+        pnl_last = float(outcome["pnl"])
+    sess.bankroll_now = float(sess.bankroll_now) + pnl_last
 
     # Append current result to history (in memory only — DB rebuilds from spin rows)
     recent_history.append(body.result_number)

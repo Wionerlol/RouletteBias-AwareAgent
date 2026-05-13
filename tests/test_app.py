@@ -127,30 +127,31 @@ class TestFullFlow:
             assert state["bankroll_now"] == pytest.approx(prev_bankroll)
 
     def test_pnl_accounting_correct(self):
-        """Red bet $10: win on red result → +$10, lose on black → -$10."""
+        """Initial bets from /session/new must be settled on the first spin."""
         client = TestClient(app)
 
         with _patched_agent():
             resp = client.post("/session/new", headers=HEADERS, json=_NEW_SESSION_BODY)
             session_id = resp.json()["session_id"]
 
-            # First spin: no previous bets to settle, pnl_last_spin=0
+            # Spin 1: settles initial bets (red $10) against result 17 (BLACK) → -$10
             resp = client.post(
                 f"/session/{session_id}/spin",
                 headers=HEADERS,
-                json={"result_number": 17},  # 17 is BLACK
-            )
-            assert resp.json()["pnl_last_spin"] == pytest.approx(0.0)
-            br1 = resp.json()["bankroll_now"]
-
-            # Second spin: settles spin-1 bets (red $10) against result 2 (black) → -$10
-            resp = client.post(
-                f"/session/{session_id}/spin",
-                headers=HEADERS,
-                json={"result_number": 2},  # 2 is BLACK → red bet loses
+                json={"result_number": 17},  # 17 is BLACK → red loses
             )
             assert resp.json()["pnl_last_spin"] == pytest.approx(-10.0)
-            assert resp.json()["bankroll_now"] == pytest.approx(br1 - 10.0)
+            br1 = resp.json()["bankroll_now"]
+            assert br1 == pytest.approx(490.0)
+
+            # Spin 2: settles spin-1 bets (red $10) against result 1 (RED) → +$10
+            resp = client.post(
+                f"/session/{session_id}/spin",
+                headers=HEADERS,
+                json={"result_number": 1},  # 1 is RED → red wins
+            )
+            assert resp.json()["pnl_last_spin"] == pytest.approx(10.0)
+            assert resp.json()["bankroll_now"] == pytest.approx(br1 + 10.0)
 
 
 # ---------------------------------------------------------------------------
