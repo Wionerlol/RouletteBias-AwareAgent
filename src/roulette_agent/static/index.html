@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Roulette Agent</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#e94560">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RouletteAI">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ===== View 1: New Session ===== -->
+<div id="view-new" class="view hidden">
+  <h1>Roulette Agent</h1>
+
+  <div class="field">
+    <label>API Key</label>
+    <input type="password" id="api-key" placeholder="Your X-API-Key" autocomplete="current-password">
+  </div>
+
+  <div class="field">
+    <label>Wheel Type</label>
+    <select id="wheel-type">
+      <option value="american">American (0, 00)</option>
+      <option value="european">European (0 only)</option>
+    </select>
+  </div>
+
+  <div class="field-row">
+    <div class="field">
+      <label>Bankroll ($)</label>
+      <input type="number" id="bankroll" value="1000" min="1">
+    </div>
+    <div class="field">
+      <label>Bet Unit ($)</label>
+      <input type="number" id="bet-unit" value="10" min="1">
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Excluded Dozen</label>
+    <div class="radio-group">
+      <label><input type="radio" name="excl" value="none" checked> None</label>
+      <label><input type="radio" name="excl" value="1"> 1st 12 (1–12)</label>
+      <label><input type="radio" name="excl" value="3"> 3rd 12 (25–36)</label>
+    </div>
+  </div>
+
+  <!-- Section A: Recent draws (required) -->
+  <div class="section">
+    <h2>A. Recent Draws <span class="req">*</span></h2>
+    <p class="help">输入你能确认的最近开奖数字，按从早到晚顺序。00 用 "00" 表示。</p>
+    <textarea id="recent-history" rows="3" placeholder="例: 35,17,35,29,0,12,8,00,22,5,31,14"></textarea>
+  </div>
+
+  <!-- Section B: Table stats (optional, collapsible) -->
+  <details class="section">
+    <summary>B. Table Stats（可选）</summary>
+    <p class="help">桌面显示屏给出的统计，样本量通常未知，仅供 agent 参考。</p>
+    <div class="stats-grid">
+      <div class="field">
+        <label>Black %</label>
+        <input type="number" id="black-pct" min="0" max="1" step="0.01" placeholder="0.52">
+      </div>
+      <div class="field">
+        <label>Red %</label>
+        <input type="number" id="red-pct" min="0" max="1" step="0.01" placeholder="0.48">
+      </div>
+      <div class="field">
+        <label>Odd %</label>
+        <input type="number" id="odd-pct" min="0" max="1" step="0.01" placeholder="0.50">
+      </div>
+      <div class="field">
+        <label>Even %</label>
+        <input type="number" id="even-pct" min="0" max="1" step="0.01" placeholder="0.50">
+      </div>
+    </div>
+    <div class="field">
+      <label>Est. Sample N</label>
+      <input type="number" id="ext-n" min="1" placeholder="（未知则留空）">
+    </div>
+    <p class="note">如果不知道样本量就留空——agent 会更保守地处理这些数据。</p>
+  </details>
+
+  <button id="btn-new-session" class="btn-primary">Start Session →</button>
+  <div id="error-new" class="error hidden"></div>
+</div>
+
+<!-- ===== View 2: Spin ===== -->
+<div id="view-spin" class="view hidden">
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat">
+      <span class="stat-label">Bankroll</span>
+      <span id="bankroll-display" class="stat-value">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Spin #</span>
+      <span id="spin-index-display" class="stat-value">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Last PnL</span>
+      <span id="pnl-display" class="stat-value">—</span>
+    </div>
+  </div>
+
+  <!-- Bias card -->
+  <div id="bias-card" class="card bias-card no-evidence">
+    <div class="bias-header">
+      <span id="bias-verdict" class="bias-verdict">—</span>
+      <span id="bias-weight" class="bias-weight">w=—</span>
+    </div>
+    <p id="bias-summary" class="bias-summary"></p>
+    <p id="bias-external" class="bias-external hidden"></p>
+  </div>
+
+  <!-- Strategy card -->
+  <div class="card">
+    <h3>Next Bets</h3>
+    <div id="strategy-list"></div>
+    <details class="rationale-details">
+      <summary>Rationale</summary>
+      <p id="rationale-text" class="rationale-text"></p>
+    </details>
+  </div>
+
+  <!-- Spin input card -->
+  <div class="card">
+    <h3>Enter Result</h3>
+    <div class="spin-input-row">
+      <input type="number" id="result-input" class="result-input" min="0" max="36" placeholder="0–36" inputmode="numeric">
+      <button class="btn-zero" onclick="setResult(0)">0</button>
+      <button class="btn-zero" onclick="setResult(37)">00</button>
+    </div>
+    <button id="btn-spin" class="btn-primary">Spin →</button>
+    <div id="error-spin" class="error hidden"></div>
+  </div>
+
+  <!-- History (collapsible) -->
+  <details class="card">
+    <summary>Recent History (last 10)</summary>
+    <table class="history-table">
+      <thead><tr><th>Spin</th><th>Result</th><th>PnL</th></tr></thead>
+      <tbody id="history-body"></tbody>
+    </table>
+  </details>
+
+  <button id="btn-reset" class="btn-secondary">↩ New Session</button>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@ from typing import Any, Optional
 import anthropic
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session as DbSession, sessionmaker
@@ -342,3 +343,12 @@ def get_state(
         "hyperparams": dict(sess.hyperparams or {}),
         "last_bias_report": last_bias_report,
     }
+
+
+# ---------------------------------------------------------------------------
+# Static PWA files  — mount LAST so API routes take priority
+# ---------------------------------------------------------------------------
+
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(_static_dir):
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")

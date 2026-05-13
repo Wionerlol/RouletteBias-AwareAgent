@@ -1,0 +1,196 @@
+:root {
+  --bg: #0f0f1a;
+  --card: #1a1a2e;
+  --card2: #16213e;
+  --accent: #e94560;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --yellow: #f1c40f;
+  --orange: #e67e22;
+  --text: #e0e0e0;
+  --muted: #888;
+  --border: #2a2a4a;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.view { padding: 16px; max-width: 480px; margin: 0 auto; padding-bottom: 32px; }
+.hidden { display: none !important; }
+
+h1 { font-size: 24px; margin-bottom: 20px; color: var(--accent); }
+h2 { font-size: 18px; margin-bottom: 8px; }
+h3 { font-size: 13px; margin-bottom: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ---- Fields ---- */
+.field { margin-bottom: 16px; }
+.field label, label.field-label {
+  display: block; font-size: 12px; color: var(--muted);
+  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+select,
+textarea {
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px;
+  padding: 12px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+select {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='%23888' d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+}
+textarea { resize: vertical; min-height: 80px; }
+
+/* ---- Radio group ---- */
+.radio-group { display: flex; flex-direction: column; gap: 10px; }
+.radio-group label {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 16px; color: var(--text); cursor: pointer;
+  text-transform: none; letter-spacing: 0;
+}
+.radio-group input[type="radio"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+/* ---- Sections ---- */
+.section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+details.section > summary {
+  font-size: 16px; font-weight: 600; cursor: pointer;
+  user-select: none; list-style: none; display: flex; align-items: center; gap: 8px;
+}
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary::before {
+  content: '▶'; font-size: 11px; color: var(--muted); transition: transform 0.2s;
+}
+details[open].section > summary::before { transform: rotate(90deg); }
+details.section > *:not(summary) { margin-top: 14px; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.help { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.note { font-size: 12px; color: var(--muted); margin-top: 8px; font-style: italic; }
+.req { color: var(--accent); }
+
+/* ---- Buttons ---- */
+.btn-primary, .btn-secondary {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  border-radius: var(--radius);
+  font-size: 18px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  margin-top: 12px;
+  touch-action: manipulation;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:active { transform: scale(0.97); }
+.btn-secondary:active { opacity: 0.7; }
+
+/* ---- Error ---- */
+.error {
+  background: rgba(231,76,60,0.12);
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  padding: 12px;
+  color: #ff6b6b;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+/* ---- Spin view: stats bar ---- */
+.stats-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.stat { background: var(--card); border-radius: var(--radius); padding: 12px; text-align: center; }
+.stat-label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.stat-value { display: block; font-size: 20px; font-weight: 700; margin-top: 4px; }
+.positive { color: var(--green); }
+.negative { color: var(--red); }
+
+/* ---- Cards ---- */
+.card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+details.card > summary {
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  user-select: none; list-style: none;
+}
+details.card > summary::-webkit-details-marker { display: none; }
+
+/* ---- Bias card ---- */
+.bias-card { border-left: 4px solid var(--muted); }
+.bias-card.no-evidence { border-color: var(--muted); }
+.bias-card.weak        { border-color: var(--yellow); }
+.bias-card.moderate    { border-color: var(--orange); }
+.bias-card.strong      { border-color: var(--red); }
+
+.bias-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.bias-verdict { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; }
+.no-evidence .bias-verdict { color: var(--muted); }
+.weak        .bias-verdict { color: var(--yellow); }
+.moderate    .bias-verdict { color: var(--orange); }
+.strong      .bias-verdict { color: var(--red); }
+.bias-weight { font-size: 13px; color: var(--muted); }
+.bias-summary { font-size: 14px; }
+.bias-external { font-size: 12px; color: var(--muted); margin-top: 8px; font-style: italic; }
+
+/* ---- Strategy ---- */
+.bet-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.bet-row:last-child { border-bottom: none; }
+.bet-type   { font-size: 20px; font-weight: 700; min-width: 76px; }
+.bet-numbers { flex: 1; font-size: 13px; color: var(--muted); }
+.bet-amount { font-size: 22px; font-weight: 700; color: var(--accent); }
+.no-bets { color: var(--muted); text-align: center; padding: 16px 0; font-size: 15px; }
+
+.rationale-details { margin-top: 14px; }
+.rationale-details > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
+.rationale-text { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.65; }
+
+/* ---- Spin input ---- */
+.spin-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.result-input { flex: 1; font-size: 28px; font-weight: 700; text-align: center; padding: 12px 8px; }
+.btn-zero {
+  background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 18px; font-weight: 700; padding: 12px 14px;
+  cursor: pointer; touch-action: manipulation; white-space: nowrap;
+}
+.btn-zero:active { background: var(--border); }
+
+/* ---- History table ---- */
+.history-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.history-table th {
+  font-size: 12px; color: var(--muted); text-transform: uppercase;
+  padding: 6px 0; text-align: left; border-bottom: 1px solid var(--border);
+}
+.history-table td { padding: 9px 0; font-size: 15px; border-bottom: 1px solid rgba(42,42,74,0.5); }
+.history-table tr:last-child td { border-bottom: none; }
